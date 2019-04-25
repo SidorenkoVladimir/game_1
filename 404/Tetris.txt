@@ -1,0 +1,1507 @@
+﻿package 
+{
+	//import libraries
+	import flash.display.Sprite;
+	import flash.utils.Timer;
+	import flash.events.TimerEvent;
+	import flash.events.KeyboardEvent;
+	import flash.display.*;
+	import flash.events.Event;
+	import flash.events.MouseEvent;
+	import flash.text.TextField;
+	import flash.text.*;
+	import flash.media.Sound;
+	import flash.media.*;
+	
+	//import tween libriry
+	import com.greensock.*;
+	import com.greensock.easing.*;
+	
+	/**
+	 * ...
+	 * @author Vladimir Sidorenko
+	*/
+	
+	public class Tetris extends Sprite 
+	{
+		private var screen:Sprite;						//sprite, that will store the start page,
+											//game page, game over page and everything on the screen
+														
+		//скорости и количество нужных строк для перехода уровня я вынес в константы, чтобы проще было 
+		//манипулировать игрой, изменять только здесь, а не лезть далеко в код
+		
+		private const FX:uint      	  = 22;			//start coord OX of the playing field
+		private const FY:uint       	  = 20;			//start coord OY of the playing field
+		private const CF:uint       	  = 20;			//field unit width
+		private const F_WIDTH:uint 	  = 15;			//field width (column count)
+		private const F_HEIGHT:uint 	  = 25;			//field height (row count)
+		private const DEFAULTSPEED:int	  = 450;		//standart speed
+		private const FACTORSPEED:int	  = 25;			//коэффициент понижения скорости
+		private const FACTORSCORE:int	  = 5;			//коэффициент повышения очков на каждом уровне
+		private const TIMEROUND:int	  = 120;		//количество секунд, длина уровня
+		private const BONUSSPEED:int	  = 80;			//скорость падения фигур на бонус уровне
+		private const BONUSLINES:int      = 13;			//нужное количество собранных линий для бонусного уровня
+		private const BONUSSCORE:int      = 200;		//колличество очков за собранную линию на бонусном уровне
+		
+		private var timerspeed:uint 	  = 450;		//скорость падения фигуры, которая будет понижаться
+		private var ilevel:uint 	  = 1;			//номер уровня
+		private var score:Number     	  = 0;			//player's score
+		private var timerleft:uint	  = 1;			//колличество прошедших секунд уровня
+		private var lines:int       	  = 0;			//full lines count
+		private var fieldArr:Array;        			//array, that builds field
+		private var fieldSpr:Sprite;      			//array, that presents field
+		private var figures:Array   	  = new Array();	//figure array, 7 figures (0 - 6)
+		private var colors:Array    	  = new Array();	//color array, 7 colors
+		private var figure:CreateBox;         			//unit, that builds figure (box)
+		private var downed:CreateBox;				//figure unit when figure is on the bottom of the field
+		private var nextFig:uint;				//next figure, random number 0 - 6
+		private var contFig:Sprite ;         			//figure container, that falls down
+		private var contFigD:Sprite;        			//figure container on the bottom of the field
+		private var contFigNextD:Sprite;    			//next figure container
+		private var currFig:uint;          			//current figure, number 0 - 6
+		private var currRtt:uint;         			//current rotation, number 0 - 3
+		private var colFig:int;          			//unit coord in column
+		private var rowFig:int;           			//unit cord in row
+		private var pausePosition:int; 				//channel position when pause pressed
+		
+		private var gameOver:Boolean 	  = false;		//is game over
+		private var paused:Boolean    	  = false;		//is game paused
+		private var offing:Boolean        = false;		//is sound off
+		private var bonused:Boolean  	  = false;		//is bonused
+		private var victoried:Boolean     = false;		//is victory
+		private var newGamered:Boolean 	  = false;		//is new game started
+		
+		private var theTextFieldScore:TextField; 		//score field
+		private var theTextFieldTimeLeft:TextField; 		//поле вывода оставшегося времени
+		private var theTextFieldLevel:TextField; 		//поле вывода текущего уровня
+		private var theTextFieldLines:TextField; 		//поле вывода числа собранных линий
+		
+		private var lev_up:Level_up;  				//level_up movie clip
+		private var fatal:Fatality;				//fatality movie clip
+		private var victory:Victory_mc;				//victory movie clip
+		private var fight:Fight;                       		//fight movie clip
+		private var pause_mc:PauseFon;				//экземляр фона паузы
+		
+		private var timerDown:Timer;   					//timer, when figures are falling down
+		private var timerSpacebar:Timer   = new Timer( 5 ); 		//timer that start on spacebar event
+		private var timerLevelUp:Timer    = new Timer( 120000 );	//таймер длины уровня
+		private var timerCounting:Timer   = new Timer( 1000 );		//таймер для обратного отсчета игры
+		
+		private var transAll:SoundTransform = new SoundTransform(0.5, 0);   //sound transformation
+		
+		private var startmp3:GamePagemp3; 			//standart music instance
+		private var bonusmp3:Level3mp3; 			//bonus music instance
+		private var startchannel:SoundChannel;			//start music channel
+		private var channelBonus:SoundChannel;			//fatality music channel
+		private var channelGreeting:SoundChannel;		//greeting music channel
+		
+		//constructor
+		public function Tetris():void 
+		{
+			if (stage) init();
+			else addEventListener( Event.ADDED_TO_STAGE, init );
+		}
+		
+		private function init( ev:Event = null ):void 
+		{
+			removeEventListener( Event.ADDED_TO_STAGE, init );
+			// entry point
+			
+			//creates start page instance and adds it to the scene
+			screen = new StartPage();
+			addChild ( screen );
+			//start greeting music playing
+			greetingmp3_f();
+			//event listener for mouse click on play button
+			StartPage( screen ).play_mc.addEventListener( MouseEvent.CLICK, inviseStartPage, false, 0, true );
+			//playGame();
+		}
+		
+		//smoothly hides start page
+		public function inviseStartPage( ev:MouseEvent ):void
+		{
+			//if sound's not off, play music on button click event
+			if ( !offing )
+			{
+				var mp3:Ckickmp3 = new Ckickmp3(); 
+				var channel:SoundChannel = mp3.play();
+			}
+			
+			//removes event listener
+			StartPage( screen ).play_mc.removeEventListener( MouseEvent.CLICK, inviseStartPage );
+			
+			//smoothly hides start page and starts playGame() function
+			TweenLite.to( screen, 3, { alpha: 0, onComplete: playGame } );
+			
+			//stops greeting sound
+			channelGreeting.stop();
+			channelGreeting = null;
+		}
+		
+		//shows game field and starts the game
+		public function playGame():void
+		{
+			//запускает таймеры длительности уровня и обратного счетчика
+			timerLevelUp.addEventListener( TimerEvent.TIMER, speedy );
+			timerLevelUp.start();
+			
+			timerCounting.addEventListener( TimerEvent.TIMER, countingTime );
+			timerCounting.start();
+			
+			timerDown = new Timer(  DEFAULTSPEED );
+			
+			//if sound is not off, play music
+			if ( !offing )
+			{
+				play_startmp3();
+			}
+			
+			//shows game field
+			screen = new GamePage();
+			screen.alpha = 0;
+			addChild( screen );
+			TweenLite.to( screen, 3, { alpha: 1 } );
+			//build field from gray boxes (units)
+			craftField();
+			//figures initialization
+			initializationFigures();
+			//next figure - random number from 0 to 6
+			nextFig = Math.floor( Math.random() * 7 );
+			//creates figure
+			craftFigure();
+			//shows score
+			showScore();
+			//показывает оставшееся время уровня
+			showTime();
+			//показывает количество собранных линий
+			showLines();
+			//показывает текущий уровень
+			showLevel();
+			//event listener for keydown event
+			stage.addEventListener( KeyboardEvent.KEY_DOWN, onKeyDown );
+			//event listener for mouse click on pause, sound off buttons and new game
+			GamePage( screen ).pause_btn.addEventListener( MouseEvent.CLICK, pauseGame, false, 0, true );
+			GamePage( screen ).sound_btn.addEventListener( MouseEvent.CLICK, soundOff, false, 0, true );
+			GamePage( screen ).newGame_button.addEventListener( MouseEvent.CLICK, startNewGame, false, 0, true );
+			//creates and adds new container that will store figures that are on the bottom of the field
+			contFigD = new Sprite; 
+			addChild( contFigD );
+			//plays sound 'fight' at the start of every game
+			show_fight();
+		}
+		
+		//create field function
+		private function craftField():void
+		{
+			//creates two arrays, 1st - presents fiels, 2nd stores 1 and 0 numbers
+			fieldArr = new Array ;
+			fieldSpr = new Sprite;
+			addChild( fieldSpr );
+			fieldSpr.alpha = 0;
+			//presents field
+			TweenLite.to( fieldSpr, 3, { alpha: 1 } );
+			fieldSpr.graphics.lineStyle( 0, 0x000000 );
+			
+			//searching for all field units and initialized it to 0 (empty field), fills background field with gray boxes (units)
+			for ( var i:uint = 0; i < F_HEIGHT; i++ ) 
+			{
+				fieldArr[i] = new Array  ;
+				for ( var j:uint = 0; j < F_WIDTH; j++ ) 
+				{
+					fieldArr[i][j] = 0;
+					fieldSpr.graphics.beginFill( 0x333333 );
+					fieldSpr.graphics.drawRect( CF * j + FX, CF * i + FY, CF, CF );
+					fieldSpr.graphics.endFill();
+				}
+			}
+		}
+		
+		//initializes figures, builds arrays for figures rotations
+		//array consist of 7 figures, each figure has its own array - rotation to 0, 90, 180 and 270 degrees
+		//each figure has own color
+		private function initializationFigures():void 
+		{
+			// I
+			figures[0] = [ 
+							//0, 180
+							[
+								[0, 0, 0, 0],
+								[1, 1, 1, 1],
+								[0, 0, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//90, 270
+						    [
+								[0, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 1, 0, 0]
+							]
+						   
+						 ];
+			colors[0] = 0x00FFFF;
+			
+			//T
+			figures[1] = [
+							//0
+							[
+								[0, 0, 0, 0],
+								[1, 1, 1, 0],
+								[0, 1, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//90
+							[
+								[0, 1, 0, 0],
+								[1, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//180
+							[
+								[0, 1, 0, 0],
+								[1, 1, 1, 0],
+								[0, 0, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//270
+							[
+								[0, 1, 0, 0],
+								[0, 1, 1, 0],
+								[0, 1, 0, 0],
+								[0, 0, 0, 0]
+							]
+						];
+			colors[1] = 0x767676;
+			
+			// L
+			figures[2] = [
+							//0
+							[
+								[0, 0, 0, 0],
+								[1, 1, 1, 0],
+								[1, 0, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//90
+							[
+								[1, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//180
+							[
+								[0, 0, 1, 0],
+								[1, 1, 1, 0],
+								[0, 0, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//270
+							[
+								[0, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 1, 1, 0],
+								[0, 0, 0, 0]
+							]
+						];
+			colors[2] = 0xFFA500;
+			
+			// J
+			figures[3] = [
+							//0
+							[
+								[1, 0, 0, 0],
+								[1, 1, 1, 0],
+								[0, 0, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//90
+							[
+								[0, 1, 1, 0],
+								[0, 1, 0, 0],
+								[0, 1, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//180
+							[
+								[0, 0, 0, 0],
+								[1, 1, 1, 0],
+								[0, 0, 1, 0],
+								[0, 0, 0, 0]
+							],
+							//270
+							[
+								[0, 1, 0, 0],
+								[0, 1, 0, 0],
+								[1, 1, 0, 0],
+								[0, 0, 0, 0]
+							]
+						];
+			colors[3] = 0x0000FF;
+			
+			// Z
+			figures[4] = [
+							//0, 180
+							[
+								[0, 0, 0, 0],
+								[1, 1, 0, 0],
+								[0, 1, 1, 0],
+								[0, 0, 0, 0]
+							],
+							//90, 270
+							[
+								[0, 0, 1, 0],
+								[0, 1, 1, 0],
+								[0, 1, 0, 0],
+								[0, 0, 0, 0]
+							]
+						];
+			colors[4] = 0xFF0000;
+			
+			// S
+			figures[5] = [
+							//0, 180
+							[
+								[0, 0, 0, 0],
+								[0, 1, 1, 0],
+								[1, 1, 0, 0],
+								[0, 0, 0, 0]
+							],
+							//90, 270
+							[
+								[0, 1, 0, 0],
+								[0, 1, 1, 0],
+								[0, 0, 1, 0],
+								[0, 0, 0, 0]
+							]
+						];
+			colors[5] = 0x00FF00;
+			
+			// O
+			figures[6] = [
+							//0, 90, 180, 270
+							[
+								[0, 1, 1, 0],
+								[0, 1, 1, 0],
+								[0, 0, 0, 0],
+								[0, 0, 0, 0]
+							]
+						];
+			colors[6] = 0xFFFF00;
+		}
+		
+		//builds figure
+		private function craftFigure():void 
+		{
+			//if it's not game over and not paused, then figure builds
+			if ( !gameOver && !paused ) 
+			{
+				//current figure appropriates next figure value
+				currFig = nextFig;
+				//next figure appropriates new random value
+				nextFig = Math.floor( Math.random() * 7 );
+				//shows next figure in right field
+				drawNextFigure();
+				
+				//current rotation
+				currRtt = 0;
+				//6th column
+				colFig = 6;
+				//0 row
+				rowFig = 0;
+				//if it's empty line above the appeared figure, get this figure on 1 line up
+				if ( figures[currFig][0][0].indexOf(1) == -1 ) 
+				{
+					rowFig = -1;
+				}
+				//draws the figure
+				drawFigure();
+				
+				//if top line is empty, start falling figure timer
+				if ( checkField( rowFig, colFig, currRtt ) ) 
+				{	
+					//if it's a new game, set timer speed to standart
+					if ( newGamered )
+					{
+						timerDown.removeEventListener( TimerEvent.TIMER,onTick );
+						timerDown.stop();
+						timerDown  = new Timer( DEFAULTSPEED );
+						newGamered = false;
+					}
+			
+					timerDown.addEventListener( TimerEvent.TIMER,onTick );
+					timerDown.start();
+				}//else - game over
+				else 
+				{
+					//если бонусный уровень, то очищает поле, переходит на следующий уровень и строит новую фигуру
+					if ( bonused )
+					{
+						clearLevel();
+						levelUp();
+						bonused = false;
+						craftFigure();
+					}else
+					{
+						gameOver = true;
+						game_is_over();
+					}
+				}
+			}
+		}
+		
+		//draws next figure
+		private function drawNextFigure():void 
+		{
+			//if the next figure is already painted - remove it
+			if ( getChildByName("next") != null )
+			{
+				removeChild( getChildByName( "next" ) );
+			}
+			
+			//creates variable - figure unit instance
+			var nextF: CreateBox;
+			
+			//creates and adds container that stores figure to the scene
+			contFigNextD = new Sprite();
+			contFigNextD.x = 375;
+			contFigNextD.y = 70;
+			contFigNextD.name = "next";
+			addChild( contFigNextD );
+			
+			//building next figure from units with 0 degree rotation
+			//from 0 to 4, array 4x4
+			for ( var i:int = 0; i < figures[nextFig][0].length; i++ ) 
+			{
+				//from 0 to 4
+				for ( var j:int = 0; j < figures[nextFig][0][i].length; j++ ) 
+				{
+					//if value in array equals 1 then draw box
+					if ( figures[nextFig][0][i][j] == 1 ) 
+					{
+						nextF = new CreateBox();
+						contFigNextD.addChild( nextF );
+						nextF.graphics.beginFill( colors[nextFig] );
+						//set figure to the right place as in the array
+						nextF.graphics.drawRect( CF * j, CF * i, CF, CF );
+						nextF.graphics.endFill();	
+					}
+				}
+			}
+		}
+		
+		//game over function
+		private function game_is_over():void 
+		{
+			//останавливает таймеры длительности уровня и обратного счетчика
+			timerLevelUp.stop();
+			timerLevelUp.removeEventListener( TimerEvent.TIMER, speedy );
+			
+			timerCounting.stop();
+			timerCounting.removeEventListener( TimerEvent.TIMER, countingTime );
+			
+			//removes event listeners from pause, sound off and new game buttons
+			GamePage( screen ).pause_btn.removeEventListener( MouseEvent.CLICK, pauseGame );
+			GamePage( screen ).sound_btn.removeEventListener( MouseEvent.CLICK, soundOff );
+			GamePage( screen ).newGame_button.removeEventListener( MouseEvent.CLICK, startNewGame );
+			//removes game field, falling figure, figures on the bottom,
+			//gray field, next figure and all text field
+			removeChild( screen );
+			removeChild( contFig );
+			removeChild( contFigD );
+			removeChild( fieldSpr );
+			removeChild( contFigNextD );
+			removeChild( theTextFieldScore );
+			removeChild( theTextFieldTimeLeft );
+			removeChild( theTextFieldLevel );
+			removeChild( theTextFieldLines );
+			
+			//если не выключен звук, то остановить музыку
+			if ( !offing )
+			{
+				startchannel.stop();
+				startchannel = null;
+			}
+			
+			//удаляет ненужные элементы
+			screen = null;
+			contFig = null;
+			contFigD = null;
+			fieldSpr = null;
+			contFigNextD = null;
+			timerDown = null;
+			
+			//добавляет на сцену страницу Конца игры и анимирует ее
+			screen = new Game_overPage();
+			screen.alpha = 0;
+			addChild( screen );
+			TweenLite.to( screen, 3, { alpha: 1, onComplete: showLastScore } );	
+						
+			trace("[Tetris] game_is_over: score = " + score );
+			
+			//если набранные очки боьлше чем 10000 - добавляет на сцену ролик 'Victory'
+			if ( score >= 10000 )
+			{
+				//если не выключен звук - добавления звука с поздравлением о победе
+				if ( !offing )
+				{
+					var victorymp3:Victorymp3 = new Victorymp3(); 
+					var victorychannel:SoundChannel = victorymp3.play();
+				}
+								
+				victory = new Victory_mc;
+				victory.x = 190;
+				victory.y = 90;
+				addChild( victory );
+				victoried = true;
+				
+			}else
+			//иначе, Конец игры, и если не выключен звук - добавления звука со смехом о конце игры
+			{
+				if ( !offing )
+				{
+					var haha:Never_winmp3 = new Never_winmp3(); 
+					var channelhaha:SoundChannel = haha.play( 0, 0, transAll );
+				}
+			}
+		}
+		
+		//показывает сколько набрано очков в итоге
+		public function showLastScore():void
+		{
+			theTextFieldScore.x = 200;
+			theTextFieldScore.y = 145;
+			addChild( theTextFieldScore );
+			//добавляет слушатель клика по кнопке рестарт, если нажата кнопка, то выполняется функция inviseGOPage
+			Game_overPage( screen ).restart_mc.addEventListener( MouseEvent.CLICK, inviseGOPage, false, 0, true );
+		}
+		
+		//функция убирает с экрана клип о конце игры и начинает игру заново
+		public function inviseGOPage( ev:MouseEvent ):void
+		{
+			//если не выключен звук, то воспроизвести звук по кнопке
+			if ( !offing )
+			{
+				var mp3:Ckickmp3 = new Ckickmp3(); 
+				var channel:SoundChannel = mp3.play();
+			}
+			
+			//если победа - удалить клип с победой
+			if ( victoried )
+			{
+				removeChild( victory );
+				victoried = false;
+			}
+			
+			//удаляет слушатель на кнопку рестарт
+			Game_overPage( screen ).restart_mc.removeEventListener( MouseEvent.CLICK, inviseGOPage);
+			//удаляет текст с очками
+			removeChild( theTextFieldScore );
+			theTextFieldScore = null;
+			//очков 0, начальная скорость и собранных линий тоже 0, текущий уровень 1, прошло времени уровня 1
+			timerspeed = 450;
+			score = 0;
+			lines = 0;
+			ilevel = 1;
+			timerleft = 1;
+			//анимирование новой игры на сцену
+			TweenLite.to( screen, 1, { alpha: 0, onComplete: playGame } );
+			gameOver = false;
+		}
+		
+		//таймер, по которому идет отсчет секунд до конца уровня
+		private function countingTime(e:TimerEvent):void
+		{
+			theTextFieldTimeLeft.text = String( TIMEROUND - timerleft );
+			timerleft++;
+		}
+		
+		
+		//таймер, по которому фигуры падают вниз
+		private function onTick(e:TimerEvent):void
+		{
+			//если следующая строчка пустая - опустить фигурку на одну строчку
+			if ( checkField( rowFig + 1, colFig, currRtt ) ) 
+			{
+				rowFig++;
+				pasteFigure();
+			}
+			else
+			//иначе отрисовать на дне новую фигуру и  сделать слудующую фигуру, падающую сверху 
+			{
+				downFigure();
+				craftFigure();
+			}
+		}
+		
+		//отрисовывает фигуру
+		private function drawFigure():void 
+		{
+			var cf:uint = currFig; //рандомная фигура
+			
+			//создает и добавляет на сцену контейнер-фигуру, где буду хранится кубики
+			contFig = new Sprite();
+			addChild( contFig );
+			
+			//алгоритм  отрисовывания фигуры с помощью матриц
+			for ( var i:int = 0; i < figures[cf][currRtt].length; i++ ) 
+			{
+				for ( var j:int = 0; j < figures[cf][currRtt][i].length; j++ ) 
+				{
+					if ( figures[cf][currRtt][i][j] == 1 ) 
+					{
+						figure = new CreateBox();
+						contFig.addChild( figure );
+						figure.graphics.beginFill( colors[cf] );
+						figure.graphics.drawRect( CF * j, CF * i, CF, CF );
+						figure.graphics.endFill();	
+					}
+				}
+			}
+			//вставляет фигуру на место
+			pasteFigure();
+		}
+		
+		//вставляет фигуру на нужные координаты
+		private function pasteFigure():void 
+		{
+			contFig.x = colFig * CF + FX;
+			contFig.y = rowFig * CF + FY;
+		}
+		
+		//выполняется при нажатии на кнопки клавиатуры
+		private function onKeyDown( e:KeyboardEvent ):void 
+		{
+			//если не конец игры и не пауза
+			if ( !gameOver && !paused ) 
+			{
+				switch (e.keyCode) 
+				{
+					//если нажат пробел - ускорить падение фигуры 
+					case 32 :
+						timerDown.stop();
+						timerSpacebar.addEventListener( TimerEvent.TIMER, clickSpacebar );
+						timerSpacebar.start();
+						pasteFigure();
+						break;
+					
+					//если нажата стрелка влево и нет столкновения с левой стенкой, то двигать фигуру на 1 столбик влево
+					case 37 :
+						if ( checkField( rowFig, colFig - 1, currRtt ) ) 
+						{
+							colFig--;
+							pasteFigure();
+						}
+						break;
+						
+					//если нажата стрелка вверх - поворачивать фигуру
+					case 38 :
+						var cr:uint = currRtt;
+						//следующий поворот из массива
+						var rot:uint = ( cr + 1 ) % figures[currFig].length;
+						//если нет столкновений с чем-либо - повернуть фигуру
+						if (checkField(rowFig, colFig, rot)) 
+						{
+							//если не выключен звук, то воспроизвести звук поворота кнопки
+							if ( !offing )
+							{
+								var mp3:Rotatemp3 = new Rotatemp3(); 
+								var channel:SoundChannel = mp3.play();
+							}
+							
+							//текущему повороту присваиваем следующий поворот
+							currRtt = rot;
+							//удаляет теукщую фигуру
+							removeChild(contFig);
+							//рисует новую фигуру с другим углом поворота и вставляет ее на сцену в то же место
+							drawFigure();
+							pasteFigure();
+						}
+						break;
+						
+					//если нажата стрелка вправо и нет столкновения с правой стенкой, то двигать фигуру на 1 столбик вправо
+					case 39 :
+						if ( checkField( rowFig, colFig + 1, currRtt ) ) 
+						{
+							colFig++;
+							pasteFigure();
+						}
+						break;
+						
+					//если нажата стрелка вниз и нет столкновения с нижней стенкой, то двигать фигуру на 1 строчку вниз 
+					case 40 :
+						if ( checkField( rowFig + 1, colFig, currRtt ) ) 
+						{
+							rowFig++;
+							pasteFigure();
+						}
+						//если есть столкновение с нижней стенкой - отрисовать фигуру на дне и создать новую фигуру, падающую вниз
+						else
+						{
+							downFigure();
+							craftFigure();
+						}
+						break;
+				}
+			}
+		}
+		
+		//фигура стремительно летит вниз, пока не упадет на дно
+		public function clickSpacebar( ev:TimerEvent ):void
+		{
+			if ( checkField( rowFig + 1, colFig, currRtt ) ) 
+			{
+				rowFig++;
+			}
+			else
+			{
+				downFigure();
+				craftFigure();
+			}
+		}
+		
+		//проверка поля, возвращаяет либо истину либо ложь
+		private function checkField(hgt:int, wdt:int, rt:uint):Boolean
+		{
+			//текущая фигура
+			var cf:uint = currFig;
+			//алгоритм логически ограничивается стенками, проверка поля
+			for ( var i:int = 0; i < figures[cf][rt].length; i++ ) 
+			{
+				for ( var j:int = 0; j < figures[cf][rt][i].length; j++ ) 
+				{
+					if ( figures[cf][rt][i][j] == 1 ) 
+					{
+						// чтоб не выходил за левую стенку - возвращает ложь
+						if ( wdt + j < 0 ) 
+						{
+							return false;
+						}
+						// чтоб не выходил за правую стенку - возвращает ложь
+						if ( wdt + j > 14 ) 
+						{
+							return false;
+						}
+						// чтоб не выходил за нижнюю стенку - возвращает ложь
+						if (hgt + i > 24) 
+						{
+							return false;
+						}
+						// если вдруг соприкоснется с другой фигурой - возвращает ложь
+						if ( fieldArr[hgt + i][wdt + j] == 1 ) 
+						{
+							return false;
+						}
+					}
+				}
+			}
+			//если не соприкосается ни с одной из стенок и с другими фигурами - возвращает истину
+			return true;
+		}
+		
+		
+		//отрисовывает фигуры на дне
+		private function downFigure():void 
+		{
+			//удаляет слушатели таймера, по которому фигура быстро падает вниз
+			timerSpacebar.removeEventListener( TimerEvent.TIMER, clickSpacebar );
+			timerSpacebar.stop();
+			
+			//если не выключен звук, то воспроизвести звук падения фигуры
+			if ( !offing )
+			{
+				var mp3:KubeDownmp3 = new KubeDownmp3(); 
+				var channel:SoundChannel = mp3.play();
+			}
+			
+			//текущая фигура
+			var cf:uint = currFig;
+			
+			//от 0 до 4
+			for ( var i:int = 0; i < figures[cf][currRtt].length; i++ ) 
+			{
+				//от 0 до 4
+				for ( var j:int = 0; j < figures[cf][currRtt][i].length; j++ ) 
+				{
+					//проверяется матрица 4*4 с фигурой, если в матрице 1, то нарисовать кубик
+					//таким образом рисуется текущая фигура с текущим поворотом
+					if ( figures[cf][currRtt][i][j] == 1 ) 
+					{
+						downed = new CreateBox();
+   						contFigD.addChild(downed);
+						downed.graphics.beginFill( colors[cf] );
+						//рисует кубик в нужном месте, по текущим координатам
+						downed.graphics.drawRect( CF * ( colFig + j ) + FX, CF * ( rowFig + i ) + FY, CF, CF );
+						downed.graphics.endFill();
+						//присваиваем имя каждой клетке, чтобы потом удалят полные линии
+						downed.name = "row" + (rowFig + i) + "col" + (colFig + j);
+						
+						//заполняет массив где есть кубик единицами
+						fieldArr[rowFig + i][colFig + j] = 1;
+					}
+				}	
+			}
+			
+			//удаляет контейнер с фигурой которая падала и останавливает таймер падения
+			removeChild(contFig);
+			timerDown.removeEventListener( TimerEvent.TIMER,onTick );
+			timerDown.stop();
+			//запускает проверку, есть ли полные собранные линии
+			checkFullLines();
+		}
+		
+		//проверяет есть ли полные линии
+		private function checkFullLines():void
+		{
+			//экземпляр кубика
+			var flyLine:CreateBox ;
+			//экземпляр спрайта, в который будут собираться кубики
+			var flyLineSprite:Sprite = new Sprite;
+			//добавим контейнер на сцену
+			addChild( flyLineSprite );
+			
+			//от 0 до высоты поля
+			for ( var i:int = 0; i < F_HEIGHT; i++ )
+			{
+				//если в строчке единицы
+				if ( fieldArr[i].indexOf(0) == -1 )
+				{
+					//от 0 до ширины поля, создает отдельно линию, чтобы сделать ей анимацию
+					for ( var j:int = 0; j < F_WIDTH; j++ ) 
+					{
+						flyLine = new CreateBox();
+						flyLineSprite.addChild( flyLine );
+						flyLine.graphics.beginFill( 0x666666 );
+						flyLine.graphics.drawRect( (CF * j ) + FX, ( CF * i ) + FY, CF, CF );
+						flyLine.graphics.endFill();
+						
+						//на месте собранной линии вместо 1 вставляет 0
+						fieldArr[i][j] = 0;
+						//удаляет собранную линию по именам кубиков
+						contFigD.removeChild( contFigD.getChildByName( "row" + i + "col" + j ) as CreateBox);
+					}
+					
+					//анимирует вверх якобы собранную линию
+					TweenLite.to( flyLineSprite, 1, { y: -1000, ease:Expo.easeIn } );
+
+					//проверяет все поле на наличие полной клетки, клетки с еденицей
+					//если находит, то двигает кубик на 1 клетку вниз и переименовывает
+					//кубик в зависимости от новой координаты клетки
+					for ( j = i; j >= 0; j-- ) 
+					{
+						for ( var k:int = 0; k < F_WIDTH; k++ )
+						{
+							if ( fieldArr[j][k] == 1 ) 
+							{
+								fieldArr[j][k] = 0 ;
+								fieldArr[j + 1][k] = 1;
+								contFigD.getChildByName( "row" + j + "col" + k ).y += CF;
+								contFigD.getChildByName( "row" + j + "col" + k ).name   = "row" + ( j + 1 ) + "col" + k;
+							}
+						}
+					}
+					
+					//если не выключен звук, то воспроизвести звук собирания полной линии
+					if ( !offing )
+					{
+						var mp3:FullLinemp3 = new FullLinemp3(); 
+						var channel:SoundChannel = mp3.play();
+					}
+					
+					//+1 к собранным линиям и запускает функции сумирования очков и линий
+					lines++;
+					summScore();
+					summLines();
+				}
+			}
+		}
+		
+		//показывает оставшееся время уровня
+		public function showTime():void
+		{
+			//создет новое текстовое поле, указывает шрифт и размер шрифта
+			var format:TextFormat = new TextFormat(); 
+			format.font = 'Segoe Script';
+			format.size = 28;
+								 	
+			//задает максимальное количество символов в поле, кликабельность, координаты
+			//ширину, высоту, выравнивание, значение текста и цвет
+			theTextFieldTimeLeft = new TextField();
+			theTextFieldTimeLeft.maxChars = 6;
+			theTextFieldTimeLeft.selectable = false;
+			theTextFieldTimeLeft.x = 350;
+			theTextFieldTimeLeft.y = 338;
+			theTextFieldTimeLeft.width = 120;
+			theTextFieldTimeLeft.height = 24;
+			theTextFieldTimeLeft.autoSize = TextFieldAutoSize.CENTER;
+			theTextFieldTimeLeft.text = '120';
+			theTextFieldTimeLeft.textColor = 0xCCCCCC;
+			
+			//применяет формат: шрифт и размер его и добавляет на сцену поле
+			theTextFieldTimeLeft.setTextFormat(format);
+			theTextFieldTimeLeft.defaultTextFormat = format;
+			
+			addChild( theTextFieldTimeLeft );
+		}
+		
+		//показывает количество собранных очков
+		public function showScore():void
+		{
+			//создет новое текстовое поле, указывает шрифт и размер шрифта
+			var format:TextFormat = new TextFormat(); 
+			format.font = 'Segoe Script';
+			format.size = 28;
+								 	
+			//задает максимальное количество символов в поле, кликабельность, координаты
+			//ширину, высоту, выравнивание, значение текста и цвет
+			theTextFieldScore = new TextField();
+			theTextFieldScore.maxChars = 6;
+			theTextFieldScore.selectable = false;
+			theTextFieldScore.x = 350;
+			theTextFieldScore.y = 265;
+			theTextFieldScore.width = 120;
+			theTextFieldScore.height = 24;
+			theTextFieldScore.autoSize = TextFieldAutoSize.CENTER;
+			theTextFieldScore.text = '0';
+			theTextFieldScore.textColor = 0xCCCCCC;
+			
+			//применяет формат: шрифт и размер его и добавляет на сцену поле
+			theTextFieldScore.setTextFormat(format);
+			theTextFieldScore.defaultTextFormat = format;
+			
+			addChild( theTextFieldScore );
+		}
+		
+		//показывает количество собранных линий
+		public function showLines():void
+		{
+			//создет новое текстовое поле, указывает шрифт и размер шрифта
+			var format:TextFormat = new TextFormat(); 
+			format.font = 'Segoe Script';
+			format.size = 12;
+								 	
+			//задает максимальное количество символов в поле, кликабельность, координаты
+			//ширину, высоту, выравнивание, значение текста и цвет
+			theTextFieldLines = new TextField();
+			theTextFieldLines.maxChars = 13;
+			theTextFieldLines.selectable = false;
+			theTextFieldLines.x = 400;
+			theTextFieldLines.y = 135;
+			theTextFieldLines.width = 30;
+			theTextFieldLines.height = 10;
+			theTextFieldLines.autoSize = TextFieldAutoSize.CENTER;
+			theTextFieldLines.text = '0 full lines';
+			theTextFieldLines.textColor = 0xCCCCCC;
+			
+			//применяет формат: шрифт и размер его и добавляет на сцену поле
+			theTextFieldLines.setTextFormat(format);
+			theTextFieldLines.defaultTextFormat = format;
+			
+			addChild( theTextFieldLines );
+		}
+		
+		//показывает текущий уровень
+		public function showLevel():void
+		{
+			//создет новое текстовое поле, указывает шрифт и размер шрифта
+			var format:TextFormat = new TextFormat(); 
+			format.font = 'Segoe Script';
+			format.size = 28;
+								 	
+			//задает максимальное количество символов в поле, кликабельность, координаты
+			//ширину, высоту, выравнивание, значение текста и цвет
+			theTextFieldLevel = new TextField();
+			theTextFieldLevel.maxChars = 6;
+			theTextFieldLevel.selectable = false;
+			theTextFieldLevel.x = 350;
+			theTextFieldLevel.y = 450;
+			theTextFieldLevel.width = 120;
+			theTextFieldLevel.height = 24;
+			theTextFieldLevel.autoSize = TextFieldAutoSize.CENTER;
+			theTextFieldLevel.text = '1 level';
+			theTextFieldLevel.textColor = 0xCCCCCC;
+			
+			//применяет формат: шрифт и размер его и добавляет на сцену поле
+			theTextFieldLevel.setTextFormat(format);
+			theTextFieldLevel.defaultTextFormat = format;
+			
+			addChild( theTextFieldLevel );
+		}
+		
+		//проверяет бонус-уровень по количеству собранных линий
+		public function bonusLevel():void
+		{
+			//если количество собранных линий равно нужному, то запустить бонус-уровень
+			if ( lines == BONUSLINES )
+			{
+				bonused = true;
+				
+				//присваиваем полю вывода текущего уровня - 'Bonus level'
+				theTextFieldLevel.text = 'Bonus level';
+				//количество линий обнуляет и запускает функцию суммирования линий
+				lines = 0;
+				summLines();
+				
+				//останавливает таймер длительности уровня и обратного счетчика
+				timerLevelUp.stop();
+				timerLevelUp.removeEventListener( TimerEvent.TIMER, speedy );
+				
+				timerCounting.stop();
+				timerCounting.removeEventListener( TimerEvent.TIMER, countingTime );
+				//количество секунд до конца бонусного уровня - 0
+				theTextFieldTimeLeft.text = '0';
+				
+				//останавливает таймер падения фигуры
+				timerDown.stop();
+				
+				//очищает поле от всех фигур
+				clearField();
+				
+				//создает и запускает таймер падения фигуры с бонусной(ускоренной) скоростью
+				timerDown  = new Timer( BONUSSPEED );
+				timerDown.addEventListener( TimerEvent.TIMER,onTick );
+				timerDown.start();
+				
+				//если не выключен звук, то воспроизвести звук бонусного уровня
+				if ( !offing )
+				{
+					var fat:Fatalitymp3 = new Fatalitymp3(); 
+					var channel:SoundChannel = fat.play( 0, 0, transAll );
+					
+					//останавливает игровую музыку
+					startchannel.stop();
+					startchannel = null;
+					
+					//запускает новую, более быструю музыку
+					play_bonusmp3();
+				}
+
+				//добавляет на сцену ролик fatality
+				fatal = new Fatality;
+				fatal.x = 165;
+				fatal.y = 260;
+				addChild( fatal );
+				//запускает функцию удаления ролика
+				remove_fatality_level_up();
+			}
+		}
+		
+		//запускает функцию повышения уровня
+		public function speedy( ev:TimerEvent ):void
+		{
+			levelUp();			
+		}
+		
+		//повышает уровень
+		public function levelUp():void
+		{
+			//если не выключен звук, то воспроизвести звук повышения уровня
+			if ( !offing )
+			{
+				var up:Level_upmp3 = new Level_upmp3(); 
+				var channelup:SoundChannel = up.play( 0, 0, transAll );
+			}
+				
+			//добавляет ролик повышения уровня
+			lev_up = new Level_up;
+			lev_up.x = 250;
+			lev_up.y = 268;
+			addChild( lev_up );
+			
+			//удаляет из памяти ролик
+			remove_fatality_level_up();
+
+			//останавливает таймер длительности уровня и обратного счетчика
+			timerLevelUp.stop();
+			timerLevelUp.removeEventListener( TimerEvent.TIMER, speedy );
+				
+			timerCounting.stop();
+			timerCounting.removeEventListener( TimerEvent.TIMER, countingTime );
+				
+			//останавливает таймер падения фигуры
+			timerDown.stop();
+			timerDown.removeEventListener( TimerEvent.TIMER, onTick );
+				
+			//скорость падения фигуры, каждый раз уменьшается на FACTORSPEED мс
+			timerspeed -= FACTORSPEED;
+				
+			//создает и запускает новый таймер с повышенной скоростью
+			timerDown  = new Timer( timerspeed );
+			timerDown.addEventListener( TimerEvent.TIMER,onTick );
+			timerDown.start();
+			
+			//количество линий обнуляет
+			lines = 0;
+				
+			//создает и запускает новый двухминутный таймер длительности уровня
+			timerLevelUp = new Timer( 120000 );
+			timerLevelUp.addEventListener( TimerEvent.TIMER, speedy );
+			timerLevelUp.start();
+				
+			//создает и запускает новый таймер обратного счетчика
+			timerCounting = new Timer( 1000 );
+			timerCounting.addEventListener( TimerEvent.TIMER, countingTime );
+			timerCounting.start();
+			//обнуляем текстовые поля и количество пройденных секунд
+			theTextFieldTimeLeft.text = '120';
+			theTextFieldLines.text = '0 full lines';
+			timerleft = 1;
+			
+			//номер уровня повышается и запускается функция суммирования уровня
+			ilevel++;
+			summLevel();
+		}
+		
+		//присваивает массиву нули и очищает поле от всех фигур
+		public function clearField():void
+		{
+			for ( var i:uint = 0; i < F_HEIGHT; i++ ) 
+			{
+				for ( var j:uint = 0; j < F_WIDTH; j++ ) 
+				{
+					fieldArr[i][j] = 0;
+				}
+			}
+			
+			while( contFigD.numChildren ) contFigD.removeChildAt( 0 );
+			downed = null;
+			addChild( contFigD );
+		}
+		
+		
+		
+		//удаляет через 2 секунды ролики повышения уровня и ролик бонусного уровня
+		public function remove_fatality_level_up():void
+		{
+			//через 2 секунды выполняется функция remove
+			var timer:Timer  = new Timer( 2000, 1 );
+
+			timer.addEventListener( TimerEvent.TIMER,remove );
+			timer.start();
+			
+			//удаляет ролики
+			function remove( ev:TimerEvent ):void
+			{
+				//если бонусный уровень, то удалит ролик бонусного уровня
+				if ( bonused )
+				{
+					removeChild( fatal );
+					fatal = null
+				}else
+				//иначе, удаляет ролик повышения уровня
+				{
+					removeChild( lev_up );
+					lev_up = null
+				}
+				
+				//удаляет слушатель
+				timer.removeEventListener( TimerEvent.TIMER, remove );
+			}
+		}
+		
+		//в начале раунда показывает ролик fight, спустя пол секунды
+		public function show_fight():void
+		{
+			var timer:Timer  = new Timer( 500, 1 );
+
+			timer.addEventListener( TimerEvent.TIMER,onTick );
+			timer.start();
+			
+			//удаляет ролик fight спустя 2 секунды после появления
+			var timerRemF:Timer  = new Timer( 2500, 1 );
+
+			timerRemF.addEventListener( TimerEvent.TIMER,removeFight );
+			timerRemF.start();
+			
+			//если начало игры, то удалить ролик fight
+			function removeFight( ev:TimerEvent ):void
+			{
+				//удаляет ролик fight
+				removeChild( fight );
+				fight = null
+				//удаляет слушатель таймера
+				timerRemF.removeEventListener( TimerEvent.TIMER,removeFight );
+			}
+			
+			//добавление ролика fight на сцену
+			function onTick( ev:TimerEvent ):void
+			{
+				//если не выключен звук, то воспроизвести звук fight в начале уровня
+				if ( !offing )
+				{
+					var mp3:Fightmp3 = new Fightmp3(); 
+					var channel:SoundChannel = mp3.play( 0, 0, transAll );
+				}
+				//добавляет ролик fight на сцену
+				fight = new Fight;
+				fight.x = 250;
+				fight.y = 200;
+				addChild( fight );
+				//удаляет слушатель таймера
+				timer.removeEventListener( TimerEvent.TIMER,onTick );
+			}
+		}
+		
+		//суммирование уровня после каждого повышенияж
+		public function summLevel():void
+		{
+			theTextFieldLevel.text = ilevel + ' level';
+		}
+		
+		//суммирование количества линий после каждой собранной линии
+		public function summLines():void
+		{
+			theTextFieldLines.text = lines + ' full lines';
+			
+			//если не бонусный уровень, то запустить функцию бонусного уровня
+			if ( !bonused )
+			{
+				bonusLevel();
+			}
+		}
+				
+		//суммирование очков после каждой собранной линии
+		public function summScore():void
+		{
+			//если бонусный уровень, то давать 200 очков за каждую линию, иначе - по формуле
+			if ( bonused )
+			{
+				score += BONUSSCORE;
+			}else	score += ilevel * FACTORSCORE;
+					
+			//присваивает текстовому полю очки за собранную линию
+			theTextFieldScore.text = String ( score );
+		}
+		
+		//пауза игры
+		public function pauseGame( ev:MouseEvent ):void
+		{
+			//если не пауза
+			if ( !paused )
+			{
+				//и не выключен звук, то воспроизвести звук по кнопке
+				if ( !offing )
+				{
+					var mp3:Ckickmp3 = new Ckickmp3(); 
+					var channel:SoundChannel = mp3.play();
+					
+					//если играла игровая музыка, то запомнить позицию канала( сделать паузу )
+					if ( !bonused )
+					{
+						pausePosition = startchannel.position; 
+						startchannel.stop();
+					}else
+					
+					//иначе - сделать паузу в музыке бонусного уровня
+					{
+						pausePosition = channelBonus.position; 
+						channelBonus.stop();
+					}
+				}
+				
+				//на сцену добавляется ролик pause и останавливается таймер падения фигур
+				pause_mc = new PauseFon();
+				pause_mc.x = FX - 2;
+				pause_mc.y = FY - 1;
+				stage.addChild( pause_mc );
+				timerDown.stop();
+				
+				//останавливает таймеры длительности уровня и обратного счетчика
+				timerLevelUp.stop();
+				timerLevelUp.removeEventListener( TimerEvent.TIMER, speedy );
+				
+				timerCounting.stop();
+				timerCounting.removeEventListener( TimerEvent.TIMER, countingTime );
+				
+				paused = true;
+				
+			}
+			//если пауза отжата - ролик pause исчезает из экрана
+			else
+			{
+				//если не выключен звук, то воспроизвести звук по кнопке
+				if ( !offing )
+				{
+					var mp4:Ckickmp3 = new Ckickmp3(); 
+					var channel4:SoundChannel = mp4.play();
+				}
+				
+				//если не бонусный уровень
+				if ( !bonused )
+				{
+					trace ( int( ( TIMEROUND - timerleft ) + '000' ) );
+					//запускает таймеры длительности уровня и обратного счетчика с оставшимся временем
+					timerLevelUp = new Timer ( int( ( TIMEROUND - timerleft ) + '000' ) );
+					timerLevelUp.addEventListener( TimerEvent.TIMER, speedy );
+					timerLevelUp.start();
+			
+					timerCounting.addEventListener( TimerEvent.TIMER, countingTime );
+					timerCounting.start();
+				}
+				TweenLite.to( pause_mc, 0.5, { alpha: 0, ease:Linear.easeNone, onComplete: ifPaused } );
+			}
+		}
+		
+		//удаляет ролик pause из памяти и продолжает играть мелодия с предыдущего места
+		//также запускается таймер падения фигуры
+		public function ifPaused():void
+		{
+			stage.removeChild( pause_mc );
+			pause_mc = null;
+			timerDown.start();
+			
+			//если не выключен звук, то воспроизвести мелодию в зависимости от уровня игры
+			//и с определенной позиции в музыке ( нажать play )
+			if ( !offing )
+			{
+				if ( !bonused )
+				{
+					startchannel = startmp3.play( pausePosition, 1000, transAll );
+				}else 
+				
+				{
+					channelBonus = bonusmp3.play( pausePosition, 1000, transAll );
+				}
+			}
+			
+			paused = false;
+		}
+				
+		//выключает все звуки и мелодии в игре
+		public function soundOff( ev:MouseEvent ):void
+		{
+			//если не выключен звук
+			if ( !offing )
+			{	
+				//воспроизвести звук по кнопке
+				var mp3:Ckickmp3 = new Ckickmp3(); 
+				var channel:SoundChannel = mp3.play();
+				
+				//если не пауза
+				if ( !paused )
+				{
+					//выключает игровую музыку если это не бонусный уровень
+					if ( !bonused )
+					{
+						startchannel.stop();
+						startchannel = null;
+					}else
+					//иначе выключает музыку бонусного уровня
+					{
+						channelBonus.stop();
+						channelBonus = null;
+					}
+				}
+				
+				offing = true;
+								
+			}else
+			{
+				//если не пауза - включает мелодии по уровню
+				if ( !paused )
+				{
+					if ( bonused )
+					{
+						play_bonusmp3();
+					}else play_startmp3();
+				}
+				
+				offing = false;
+			}
+		}
+		
+		//воспроизводит игровую музыку
+		public function play_startmp3():void
+		{
+				startmp3 = new GamePagemp3(); 
+				startchannel = startmp3.play( 0, 1000, transAll );
+		}
+		
+		//воспроизводит бонусную музыку
+		public function play_bonusmp3():void
+		{
+				bonusmp3 = new Level3mp3(); 
+				channelBonus = bonusmp3.play(0, 100, transAll);
+		}
+		
+		//воспроизводит стартовую музыку
+		public function greetingmp3_f():void
+		{
+			var greetingmp3:StartPagemp3 = new StartPagemp3(); 
+			channelGreeting = greetingmp3.play(0, 1000, transAll);
+		}
+		
+		//очищает уровень
+		public function clearLevel():void
+		{
+			//если не выключен звук и не пауза
+			if ( !offing && !paused)
+			{	
+				//выключает игровую музыку если не бонусный уровень
+				if ( !bonused )
+				{
+					startchannel.stop();
+					startchannel = null;
+				}else
+				//иначе выключает музыку бонусного уровня
+				{
+					channelBonus.stop();
+					channelBonus = null;
+				}
+				//запускает игровую мелодию
+				play_startmp3();
+			}
+			
+			//очищает поле от всех фигур
+			clearField();
+			
+			//удаляет падающую фигуру
+			while ( contFig.numChildren ) contFig.removeChildAt( 0 );
+			figure = null;
+			addChild( contFig );
+
+			//присваивает текстовому полю очки
+			theTextFieldScore.text = String ( score );
+		}
+		
+		//функция новой игры	
+		public function startNewGame( ev:MouseEvent ):void
+		{
+			//если не пауза
+			if ( !paused )
+			{
+				newGamered = true;
+				//показывает ролик fight
+				show_fight();
+				//останавливает таймеры длительности уровня и обратного счетчика
+				timerLevelUp.stop();
+				timerLevelUp.removeEventListener( TimerEvent.TIMER, speedy );
+				timerCounting.stop();
+				timerCounting.removeEventListener( TimerEvent.TIMER, countingTime );
+				//обнуляет количества очков, собранных линий и номер текущего уровня
+				score = 0;
+				lines = 0;
+				ilevel = 1;
+				
+				//очищает уровень и создает новую фигуру
+				clearLevel();
+				craftFigure();
+				
+				//запускает таймеры длительности уровня и обратного счетчика
+				timerLevelUp.start();
+				timerLevelUp.addEventListener( TimerEvent.TIMER, speedy );
+				
+				timerCounting = new Timer( 1000 );
+				timerCounting.addEventListener( TimerEvent.TIMER, countingTime );
+				timerCounting.start();
+				
+				//обнуляет текстовые поля и количество пройденных секунд
+				theTextFieldTimeLeft.text = '120';
+				theTextFieldLevel.text = '1 level';
+				theTextFieldLines.text = '0 full lines';
+				timerleft = 1;
+			}
+		}
+	}
+} 

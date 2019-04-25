@@ -1,0 +1,39 @@
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+	background: #000 none repeat scroll 0 0;
+	font: 12px/18px PitonAstroSity, Arial,Helvetica,sans-serif;
+	font-size: 18px;
+    font-weight: bold;
+	color:#fff;
+	text-align:center;
+}
+
+.parent {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+}
+
+.bg404 {
+    width: 550px;
+    height: 400px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin: -200px 0 0 -275px;
+	overflow: hidden;
+}
+
+@font-face {
+    font-family: "PitonAstroSity";
+    font-style: normal;
+    font-weight: bold;
+    src: url('../fonts/PitonAstroSity_Edited.ttf');
+}
